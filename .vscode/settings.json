@@ -1,0 +1,16 @@
+{
+    "go.buildOnSave": true,
+    "go.lintOnSave": true,
+    "go.vetOnSave": true,
+    "go.buildTags": "",
+    "go.buildFlags": [],
+    "go.lintFlags": [],
+    "go.vetFlags": [],
+    "go.coverOnSave": false,
+    "go.useCodeSnippetsOnFunctionSuggest": false,
+    "go.formatOnSave": true,
+    "go.formatTool": "gofmt",
+    "go.goroot": "/usr/local/go",
+    "go.gopath": "/Users/sreddy/space/go_workspace/ml-harness",
+    "go.gocodeAutoBuild": false
+}
