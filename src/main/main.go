@@ -11,6 +11,7 @@ import (
 	//	"strconv"
 	"mime"
 	"mime/multipart"
+	"querylang"
 	"strings"
 	"sync"
 )
@@ -27,21 +28,12 @@ const (
 	UNKNOWN = "unknown"
 )
 
-// QueryLang represents language options for query
-type QueryLang struct {
-	XQY string
-	JS  string
-}
-
 // Status represents test status
 type Status struct {
 	PASS    string
 	FAIL    string
 	UNKNOWN string
 }
-
-// QUERY_LANG available query languages
-var QUERY_LANG = &QueryLang{"xqy", "js"}
 
 // Test represents data structure for <h:test> element
 type Test struct {
@@ -53,6 +45,7 @@ type Test struct {
 	Type      string `xml:"type,attr"`
 	Output    string `xml:"output-result,attr"`
 	Status    string
+	Result
 	Auth
 
 	//	Value    string `xml:",chardata"`
@@ -68,6 +61,12 @@ type Auth struct {
 type Script struct {
 	Filename string
 	Tests    []Test `xml:"test"`
+}
+
+// Result contains the output from test query and shell cmds (if present)
+type Result struct {
+	QueryOutput string
+	ShellOutput string
 }
 
 // getSetup get all setup tests
@@ -99,11 +98,18 @@ func check(e error) {
 	}
 }
 
-func executeTest(t Test) {
+func executeTest(t Test) Test {
 	api := "http://localhost:8000/LATEST/eval"
 	query := "xdmp.version()"
 	data := url.Values{}
-	data.Set("javascript", query)
+	// set query lang
+	t.QueryLang = querylang.JS
+
+	if t.QueryLang == "js" {
+		data.Set("javascript", query)
+	} else {
+		data.Set("xquery", query) // default query lang
+	}
 
 	body := strings.NewReader(data.Encode())
 	//fmt.Println(body)
@@ -117,28 +123,33 @@ func executeTest(t Test) {
 	resp, err := http.DefaultClient.Do(req)
 	defer resp.Body.Close()
 	check(err)
+
 	mediaType, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	check(err)
-
 	if strings.HasPrefix(mediaType, "multipart/") {
 		mr := multipart.NewReader(resp.Body, params["boundary"])
+
 		for {
 			p, err := mr.NextPart()
 			if err == io.EOF {
-				return
+				return t
 			}
+
 			check(err)
 			result, err := ioutil.ReadAll(p)
 			check(err)
-			fmt.Printf("Results  %q\n", result)
+			t.Result = Result{QueryOutput: string(result), ShellOutput: ""}
+			//fmt.Printf("Result  %q\n", t.Result)
 		}
 	}
+
+	return t
 }
 
 func sendResult(t Test, ch chan Test) {
 	//fmt.Println(res)
-	t.Status = PASS
-	executeTest(t)
+	//t.Status = PASS
+	t = executeTest(t)
 	ch <- t
 	wg.Done()
 }
@@ -156,7 +167,7 @@ func main() {
 	fmt.Println("xml test file : ", xmldata.Filename)
 	for _, test := range xmldata.Tests {
 		if test.QueryLang == "" {
-			test.QueryLang = QUERY_LANG.XQY
+			test.QueryLang = querylang.JS
 		}
 		//fmt.Println(test.QueryLang)
 	}
@@ -166,14 +177,14 @@ func main() {
 
 	for _, teardown := range xmldata.getTeardown() {
 		wg.Add(1)
-		go sendResult(teardown, resultChannel)
+		sendResult(teardown, resultChannel)
 	}
 
 	wg.Wait()
 	close(resultChannel)
 
-	// for elem := range resultChannel {
-	// 	fmt.Println(elem.Status)
-	// }
+	for elem := range resultChannel {
+		fmt.Printf("%s: %s\n", elem.Name, elem.Result.QueryOutput)
+	}
 
 }
