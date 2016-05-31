@@ -1,6 +1,7 @@
 package xmltest
 
 import (
+	//"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	//	"strconv"
 	"mime"
 	"mime/multipart"
+	"mlerror"
 	"querylang"
 	"strings"
 	"sync"
@@ -24,7 +26,7 @@ const file = "dbrep-ja.xml"
 // check err
 func check(e error) {
 	if e != nil {
-		panic(e)
+		panic(e.Error())
 	}
 }
 
@@ -62,6 +64,7 @@ type XMLFile struct {
 type Result struct {
 	QueryOutput string
 	ShellOutput string
+	Exception   mlerror.EvalResponse
 }
 
 // getSetup get all setup tests
@@ -146,6 +149,17 @@ func (s *Test) Execute(t Test) Test {
 	defer resp.Body.Close()
 	check(err)
 
+	// check query was executed successfully
+	if resp.StatusCode != 200 {
+		respBody, err := ioutil.ReadAll(resp.Body)
+		check(err)
+		reason, err := mlerror.GetErrorResponse(respBody)
+		check(err)
+		t.Status = "fail"
+		t.Exception = reason
+		return t
+	}
+	// if no error then parse the multipart response to extract query result
 	mediaType, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	check(err)
 	if strings.HasPrefix(mediaType, "multipart/") {
